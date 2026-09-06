@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import SearchBar from "./SearchBar";
 
@@ -13,11 +14,15 @@ export default function Header({ query }: { query?: string }) {
   return (
     <header className="sticky top-0 z-50 border-b border-black/[0.06] bg-[#fafafb]/85 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-[1600px] items-center gap-4 px-4 sm:px-6">
-        <Link href="/" className="flex shrink-0 items-baseline gap-2" aria-label="LUMEN home">
-          <span className="font-display text-[1.45rem] font-semibold tracking-tight">LUMEN</span>
-          <span className="hidden text-[11px] font-medium uppercase tracking-[0.18em] text-neutral-500 md:inline">
-            Prompt Library
-          </span>
+        <Link href="/" className="flex shrink-0 items-center" aria-label="LUMEN home">
+          <Image
+            src="/lumen-logo-light.png"
+            alt="LUMEN"
+            width={132}
+            height={36}
+            priority
+            className="h-8 w-auto sm:h-9"
+          />
         </Link>
 
         <nav className="hidden items-center gap-1 lg:flex" aria-label="Primary">

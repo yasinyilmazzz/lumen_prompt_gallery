@@ -16,7 +16,10 @@ export default async function HomePage() {
     getModelCounts(),
   ]);
 
-  const heroImages = [...featured, ...latest].slice(0, 5);
+  const heroImages = [...featured, ...latest]
+    .flatMap((card) => (card.images[0] ? [card.images[0]] : []))
+    .slice(0, 5);
+  const visualCount = latest.reduce((sum, card) => sum + card.images.length, 0);
   const maleModels = models.filter((m) => m.gender === "male");
   const femaleModels = models.filter((m) => m.gender === "female");
 
@@ -56,7 +59,7 @@ export default async function HomePage() {
             <dl className="mt-10 flex gap-8 text-sm">
               <div>
                 <dt className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/45">Visuals</dt>
-                <dd className="mt-1 font-display text-2xl">{latest.length * 3}+</dd>
+                <dd className="mt-1 font-display text-2xl">{visualCount}+</dd>
               </div>
               <div>
                 <dt className="text-[11px] font-medium uppercase tracking-[0.16em] text-white/45">Models</dt>

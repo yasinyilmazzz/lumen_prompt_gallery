@@ -5,7 +5,7 @@ import { categories, imageTags, images, models, prompts, tags } from "@/db/schem
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-export type GalleryItem = {
+export type GalleryImage = {
   imageId: string;
   imageUrl: string;
   thumbnailUrl: string | null;
@@ -13,6 +13,9 @@ export type GalleryItem = {
   width: number | null;
   height: number | null;
   sortOrder: number;
+};
+
+export type GalleryPromptCard = {
   promptId: string;
   promptSlug: string;
   title: string;
@@ -26,6 +29,7 @@ export type GalleryItem = {
   categoryId: string | null;
   categoryName: string | null;
   categorySlug: string | null;
+  images: GalleryImage[];
 };
 
 export type ExploreFilters = {
@@ -37,11 +41,11 @@ export type ExploreFilters = {
   featured?: boolean;
 };
 
-// ---------------------------------------------------------------------------
-// Gallery query — single reusable reader for every public gallery surface
-// ---------------------------------------------------------------------------
-export async function getGalleryItems(filters: ExploreFilters = {}, limit = 48, offset = 0): Promise<GalleryItem[]> {
-  const conditions = [eq(prompts.status, "published")];
+function buildGalleryPromptConditions(filters: ExploreFilters) {
+  const conditions = [
+    eq(prompts.status, "published"),
+    sql`exists (select 1 from images i where i.prompt_id = ${prompts.id})`,
+  ];
 
   if (filters.gender) conditions.push(eq(models.gender, filters.gender));
   if (filters.category) conditions.push(eq(categories.slug, filters.category));
@@ -49,12 +53,14 @@ export async function getGalleryItems(filters: ExploreFilters = {}, limit = 48, 
   if (filters.featured) conditions.push(eq(prompts.featured, true));
 
   if (filters.tag) {
-    const tagged = db
-      .select({ imageId: imageTags.imageId })
-      .from(imageTags)
-      .innerJoin(tags, eq(tags.id, imageTags.tagId))
-      .where(eq(tags.slug, filters.tag));
-    conditions.push(inArray(images.id, tagged));
+    conditions.push(
+      sql`exists (
+        select 1 from images i
+        inner join image_tags it on it.image_id = i.id
+        inner join tags t on t.id = it.tag_id
+        where i.prompt_id = ${prompts.id} and t.slug = ${filters.tag}
+      )`
+    );
   }
 
   if (filters.q) {
@@ -69,7 +75,16 @@ export async function getGalleryItems(filters: ExploreFilters = {}, limit = 48, 
     );
   }
 
-  const rows = await db
+  return conditions;
+}
+
+async function attachImagesToPromptCards(
+  promptRows: Omit<GalleryPromptCard, "images">[]
+): Promise<GalleryPromptCard[]> {
+  if (promptRows.length === 0) return [];
+
+  const promptIds = promptRows.map((p) => p.promptId);
+  const imageRows = await db
     .select({
       imageId: images.id,
       imageUrl: images.imageUrl,
@@ -78,6 +93,40 @@ export async function getGalleryItems(filters: ExploreFilters = {}, limit = 48, 
       width: images.width,
       height: images.height,
       sortOrder: images.sortOrder,
+      promptId: images.promptId,
+    })
+    .from(images)
+    .where(inArray(images.promptId, promptIds))
+    .orderBy(asc(images.sortOrder), asc(images.createdAt));
+
+  const imagesByPrompt = new Map<string, GalleryImage[]>();
+  for (const row of imageRows) {
+    const { promptId, ...image } = row;
+    const list = imagesByPrompt.get(promptId) ?? [];
+    list.push(image);
+    imagesByPrompt.set(promptId, list);
+  }
+
+  return promptRows
+    .map((prompt) => ({
+      ...prompt,
+      images: imagesByPrompt.get(prompt.promptId) ?? [],
+    }))
+    .filter((card) => card.images.length > 0);
+}
+
+// ---------------------------------------------------------------------------
+// Gallery query — one card per prompt, all images grouped for carousel
+// ---------------------------------------------------------------------------
+export async function getGalleryItems(
+  filters: ExploreFilters = {},
+  limit = 48,
+  offset = 0
+): Promise<GalleryPromptCard[]> {
+  const conditions = buildGalleryPromptConditions(filters);
+
+  const promptRows = await db
+    .select({
       promptId: prompts.id,
       promptSlug: prompts.slug,
       title: prompts.title,
@@ -92,47 +141,22 @@ export async function getGalleryItems(filters: ExploreFilters = {}, limit = 48, 
       categoryName: categories.name,
       categorySlug: categories.slug,
     })
-    .from(images)
-    .innerJoin(prompts, eq(prompts.id, images.promptId))
+    .from(prompts)
     .leftJoin(models, eq(models.id, prompts.modelId))
     .leftJoin(categories, eq(categories.id, prompts.categoryId))
     .where(and(...conditions))
-    .orderBy(desc(prompts.featured), desc(prompts.publishedAt), desc(images.sortOrder))
+    .orderBy(desc(prompts.featured), desc(prompts.publishedAt))
     .limit(limit)
     .offset(offset);
 
-  return rows;
+  return attachImagesToPromptCards(promptRows);
 }
 
 export async function countGalleryItems(filters: ExploreFilters = {}): Promise<number> {
-  const conditions = [eq(prompts.status, "published")];
-  if (filters.gender) conditions.push(eq(models.gender, filters.gender));
-  if (filters.category) conditions.push(eq(categories.slug, filters.category));
-  if (filters.model) conditions.push(eq(models.slug, filters.model));
-  if (filters.featured) conditions.push(eq(prompts.featured, true));
-  if (filters.tag) {
-    const tagged = db
-      .select({ imageId: imageTags.imageId })
-      .from(imageTags)
-      .innerJoin(tags, eq(tags.id, imageTags.tagId))
-      .where(eq(tags.slug, filters.tag));
-    conditions.push(inArray(images.id, tagged));
-  }
-  if (filters.q) {
-    const needle = `%${filters.q.trim()}%`;
-    conditions.push(
-      or(
-        ilike(prompts.title, needle),
-        ilike(prompts.prompt, needle),
-        ilike(models.name, needle),
-        ilike(categories.name, needle)
-      )!
-    );
-  }
+  const conditions = buildGalleryPromptConditions(filters);
   const [row] = await db
     .select({ value: count() })
-    .from(images)
-    .innerJoin(prompts, eq(prompts.id, images.promptId))
+    .from(prompts)
     .leftJoin(models, eq(models.id, prompts.modelId))
     .leftJoin(categories, eq(categories.id, prompts.categoryId))
     .where(and(...conditions));
@@ -183,18 +207,20 @@ export async function getPromptBySlug(slug: string, includeDrafts = false) {
   return { prompt, model, category, images: promptImages, tags: deduped };
 }
 
-export async function getRelatedPrompts(promptId: string, categoryId: string | null, limit = 8): Promise<GalleryItem[]> {
-  const conditions = [eq(prompts.status, "published"), sql`${prompts.id} != ${promptId}`];
+export async function getRelatedPrompts(
+  promptId: string,
+  categoryId: string | null,
+  limit = 8
+): Promise<GalleryPromptCard[]> {
+  const conditions = [
+    eq(prompts.status, "published"),
+    sql`${prompts.id} != ${promptId}`,
+    sql`exists (select 1 from images i where i.prompt_id = ${prompts.id})`,
+  ];
   if (categoryId) conditions.push(eq(prompts.categoryId, categoryId));
-  const rows = await db
+
+  const promptRows = await db
     .select({
-      imageId: images.id,
-      imageUrl: images.imageUrl,
-      thumbnailUrl: images.thumbnailUrl,
-      altText: images.altText,
-      width: images.width,
-      height: images.height,
-      sortOrder: images.sortOrder,
       promptId: prompts.id,
       promptSlug: prompts.slug,
       title: prompts.title,
@@ -209,16 +235,14 @@ export async function getRelatedPrompts(promptId: string, categoryId: string | n
       categoryName: categories.name,
       categorySlug: categories.slug,
     })
-    .from(images)
-    .innerJoin(prompts, eq(prompts.id, images.promptId))
+    .from(prompts)
     .leftJoin(models, eq(models.id, prompts.modelId))
     .leftJoin(categories, eq(categories.id, prompts.categoryId))
     .where(and(...conditions))
     .orderBy(desc(prompts.publishedAt))
     .limit(limit);
-  // One card per prompt
-  const seen = new Set<string>();
-  return rows.filter((r) => (seen.has(r.promptId) ? false : (seen.add(r.promptId), true)));
+
+  return attachImagesToPromptCards(promptRows);
 }
 
 // ---------------------------------------------------------------------------

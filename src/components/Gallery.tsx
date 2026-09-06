@@ -1,47 +1,61 @@
 import Image from "next/image";
 import Link from "next/link";
-import type { GalleryItem } from "@/lib/queries";
+import CardCarousel from "@/components/CardCarousel";
+import type { GalleryPromptCard } from "@/lib/queries";
 import { CLOUDINARY_SIZES, responsiveSrcSet } from "@/lib/cloudinary";
 
-export function ImageCard({ item, priority = false }: { item: GalleryItem; priority?: boolean }) {
-  const alt = item.altText || `${item.title} — AI generated image`;
+export function PromptCard({ item, priority = false }: { item: GalleryPromptCard; priority?: boolean }) {
+  const cover = item.images[0];
+  if (!cover) return null;
+
+  const alt = cover.altText || `${item.title} — AI generated image`;
+
   return (
     <article className="group relative overflow-hidden rounded-2xl bg-ink-100">
-      <Link href={`/prompts/${item.promptSlug}`} aria-label={`View prompt: ${item.title}`}>
-        <div className="zoom-frame relative w-full bg-[#e9e9ee]">
-          <Image
-            src={item.imageUrl}
-            alt={alt}
-            width={item.width || 800}
-            height={item.height || 1000}
-            sizes={CLOUDINARY_SIZES.masonry}
+      <div className="zoom-frame relative w-full bg-[#e9e9ee]">
+        {item.images.length === 1 ? (
+          <Link href={`/prompts/${item.promptSlug}`} aria-label={`View prompt: ${item.title}`}>
+            <Image
+              src={cover.imageUrl}
+              alt={alt}
+              width={cover.width || 800}
+              height={cover.height || 1000}
+              sizes={CLOUDINARY_SIZES.masonry}
+              priority={priority}
+              loading={priority ? undefined : "lazy"}
+              className="h-auto w-full object-cover"
+            />
+          </Link>
+        ) : (
+          <CardCarousel
+            images={item.images}
+            promptSlug={item.promptSlug}
+            title={item.title}
             priority={priority}
-            loading={priority ? undefined : "lazy"}
-            className="h-auto w-full object-cover"
           />
-          {/* hover overlay */}
-          <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
-          <div className="absolute inset-x-0 bottom-0 translate-y-2 p-4 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-            <p className="text-[15px] font-semibold leading-snug text-white">{item.title}</p>
-            <div className="mt-1.5 flex items-center gap-2 text-xs font-medium text-white/80">
-              {item.modelName && <span>{item.modelName}</span>}
-              {item.modelName && item.categoryName && <span aria-hidden="true">·</span>}
-              {item.categoryName && <span>{item.categoryName}</span>}
-            </div>
-            <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-semibold text-black">
-              View prompt
-              <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M7 17 17 7M8 7h9v9" />
-              </svg>
-            </span>
+        )}
+        {/* hover overlay */}
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-black/70 via-black/0 to-black/0 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 translate-y-2 p-4 opacity-0 transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+          <p className="text-[15px] font-semibold leading-snug text-white">{item.title}</p>
+          <div className="mt-1.5 flex items-center gap-2 text-xs font-medium text-white/80">
+            {item.modelName && <span>{item.modelName}</span>}
+            {item.modelName && item.categoryName && <span aria-hidden="true">·</span>}
+            {item.categoryName && <span>{item.categoryName}</span>}
           </div>
-          {item.featured && (
-            <span className="absolute left-3 top-3 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur">
-              Featured
-            </span>
-          )}
+          <span className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/95 px-3.5 py-1.5 text-xs font-semibold text-black">
+            View prompt
+            <svg className="h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} aria-hidden="true">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M7 17 17 7M8 7h9v9" />
+            </svg>
+          </span>
         </div>
-      </Link>
+        {item.featured && (
+          <span className="absolute left-3 top-3 z-10 rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-white backdrop-blur">
+            Featured
+          </span>
+        )}
+      </div>
       {/* always-visible caption for touch devices */}
       <div className="flex items-center justify-between gap-2 px-1 pb-1 pt-2.5">
         <div className="min-w-0">
@@ -66,13 +80,16 @@ export function ImageCard({ item, priority = false }: { item: GalleryItem; prior
   );
 }
 
+/** @deprecated Use PromptCard */
+export const ImageCard = PromptCard;
+
 export default function Gallery({
   items,
   eagerCount = 4,
   emptyTitle = "No visuals found",
   emptyHint = "Try a different search or filter.",
 }: {
-  items: GalleryItem[];
+  items: GalleryPromptCard[];
   eagerCount?: number;
   emptyTitle?: string;
   emptyHint?: string;
@@ -96,12 +113,12 @@ export default function Gallery({
   return (
     <div className="masonry">
       {items.map((item, i) => (
-        <ImageCard key={item.imageId} item={item} priority={i < eagerCount} />
+        <PromptCard key={item.promptId} item={item} priority={i < eagerCount} />
       ))}
     </div>
   );
 }
 
-export function preloadSrcSet(item: GalleryItem): string | undefined {
-  return responsiveSrcSet(item.imageUrl);
+export function preloadSrcSet(item: GalleryPromptCard): string | undefined {
+  return responsiveSrcSet(item.images[0]?.imageUrl ?? "");
 }
