@@ -3,7 +3,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { getAdminSession } from "@/lib/auth";
-import { signUploadParams } from "@/lib/cloudinary";
+import { isCloudinaryConfigured, signUploadParams, uploadBufferToCloudinary } from "@/lib/cloudinary";
 
 const MAX_BYTES = 8 * 1024 * 1024; // 8 MB
 const ALLOWED = new Set(["image/jpeg", "image/png", "image/webp", "image/avif"]);
@@ -48,11 +48,37 @@ export async function POST(req: Request) {
 
   const ext = file.type === "image/png" ? "png" : file.type === "image/webp" ? "webp" : file.type === "image/avif" ? "avif" : "jpg";
   const name = `${Date.now()}-${randomUUID().slice(0, 8)}.${ext}`;
+  const buffer = Buffer.from(await file.arrayBuffer());
+
+  if (isCloudinaryConfigured()) {
+    try {
+      const uploaded = await uploadBufferToCloudinary(buffer, name);
+      return NextResponse.json({
+        ok: true,
+        url: uploaded.secure_url,
+        publicId: uploaded.public_id,
+        width: uploaded.width,
+        height: uploaded.height,
+      });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Cloudinary upload failed.";
+      return NextResponse.json({ error: message }, { status: 502 });
+    }
+  }
+
+  if (process.env.VERCEL) {
+    return NextResponse.json(
+      {
+        error:
+          "Cloudinary is not configured on this deployment. Add CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET, and NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME in Vercel.",
+      },
+      { status: 503 }
+    );
+  }
+
   const dir = join(process.cwd(), "public", "uploads");
   await mkdir(dir, { recursive: true });
-  const buffer = Buffer.from(await file.arrayBuffer());
   await writeFile(join(dir, name), buffer);
 
-  // Best-effort dimensions probe (PNG/JPEG magic not required — UI tolerates nulls)
   return NextResponse.json({ ok: true, url: `/uploads/${name}`, width: null, height: null });
 }

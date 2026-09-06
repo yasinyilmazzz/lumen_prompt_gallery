@@ -342,12 +342,73 @@ function ImageManager({ promptId, images }: { promptId: string; images: ImageRow
     setUploadState("uploading");
     setError(null);
     try {
-      const form = new FormData();
-      form.set("file", file);
-      const res = await fetch("/api/admin/upload", { method: "POST", body: form });
-      const data = (await res.json()) as { ok?: boolean; url?: string; error?: string };
-      if (!res.ok || !data.url) throw new Error(data.error || "Upload failed.");
-      const saved = await addImageToPrompt({ promptId, imageUrl: data.url, altText: file.name.replace(/\.[^.]+$/, "") });
+      let imageUrl: string;
+      let width: number | null = null;
+      let height: number | null = null;
+      let cloudinaryPublicId: string | null = null;
+
+      const configRes = await fetch("/api/admin/upload");
+      const config = (await configRes.json()) as {
+        configured?: boolean;
+        signature?: string;
+        timestamp?: number;
+        apiKey?: string;
+        cloudName?: string;
+        folder?: string;
+      };
+
+      if (config.configured && config.signature && config.cloudName && config.apiKey && config.timestamp) {
+        const cloudForm = new FormData();
+        cloudForm.set("file", file);
+        cloudForm.set("api_key", config.apiKey);
+        cloudForm.set("timestamp", String(config.timestamp));
+        cloudForm.set("signature", config.signature);
+        cloudForm.set("folder", config.folder ?? "lumen");
+        const cloudRes = await fetch(`https://api.cloudinary.com/v1_1/${config.cloudName}/image/upload`, {
+          method: "POST",
+          body: cloudForm,
+        });
+        const cloudData = (await cloudRes.json()) as {
+          secure_url?: string;
+          public_id?: string;
+          width?: number;
+          height?: number;
+          error?: { message?: string };
+        };
+        if (!cloudRes.ok || !cloudData.secure_url) {
+          throw new Error(cloudData.error?.message || "Cloudinary upload failed.");
+        }
+        imageUrl = cloudData.secure_url;
+        cloudinaryPublicId = cloudData.public_id ?? null;
+        width = cloudData.width ?? null;
+        height = cloudData.height ?? null;
+      } else {
+        const form = new FormData();
+        form.set("file", file);
+        const res = await fetch("/api/admin/upload", { method: "POST", body: form });
+        const data = (await res.json()) as {
+          ok?: boolean;
+          url?: string;
+          publicId?: string;
+          width?: number | null;
+          height?: number | null;
+          error?: string;
+        };
+        if (!res.ok || !data.url) throw new Error(data.error || "Upload failed.");
+        imageUrl = data.url;
+        cloudinaryPublicId = data.publicId ?? null;
+        width = data.width ?? null;
+        height = data.height ?? null;
+      }
+
+      const saved = await addImageToPrompt({
+        promptId,
+        imageUrl,
+        altText: file.name.replace(/\.[^.]+$/, ""),
+        width,
+        height,
+        cloudinaryPublicId,
+      });
       if (!saved.ok) throw new Error(saved.error);
       setUploadState("done");
       refresh();

@@ -75,6 +75,13 @@ export const CLOUDINARY_SIZES = {
   hero: "100vw",
 } as const;
 
+export type CloudinaryUploadResult = {
+  secure_url: string;
+  public_id: string;
+  width: number;
+  height: number;
+};
+
 /** Server-side signature for signed uploads (secret never leaves the server). */
 export async function signUploadParams(params: Record<string, string>): Promise<{
   signature: string;
@@ -98,3 +105,29 @@ export async function signUploadParams(params: Record<string, string>): Promise<
   const signature = createHmac("sha1", apiSecret).update(sorted).digest("hex");
   return { signature, timestamp, apiKey, cloudName };
 }
+
+const UPLOAD_FOLDER = "lumen";
+
+/** Upload image bytes to Cloudinary (server-side fallback when client can't sign). */
+export async function uploadBufferToCloudinary(
+  buffer: Buffer,
+  filename: string
+): Promise<CloudinaryUploadResult> {
+  const signed = await signUploadParams({ folder: UPLOAD_FOLDER });
+  const body = new FormData();
+  body.append("file", new Blob([new Uint8Array(buffer)]), filename);
+  body.append("api_key", signed.apiKey);
+  body.append("timestamp", String(signed.timestamp));
+  body.append("signature", signed.signature);
+  body.append("folder", UPLOAD_FOLDER);
+
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${signed.cloudName}/image/upload`, {
+    method: "POST",
+    body,
+  });
+  const data = (await res.json()) as CloudinaryUploadResult & { error?: { message?: string } };
+  if (!res.ok) throw new Error(data.error?.message ?? "Cloudinary upload failed.");
+  return data;
+}
+
+export { UPLOAD_FOLDER };
