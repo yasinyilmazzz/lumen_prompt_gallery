@@ -282,23 +282,34 @@ export async function getModelCounts(): Promise<Record<string, number>> {
 // Admin — stats & management readers
 // ---------------------------------------------------------------------------
 export async function getAdminStats() {
-  const [total, published, drafts, imgs, mods, cats, copies] = await Promise.all([
-    db.select({ value: count() }).from(prompts),
-    db.select({ value: count() }).from(prompts).where(eq(prompts.status, "published")),
-    db.select({ value: count() }).from(prompts).where(eq(prompts.status, "draft")),
-    db.select({ value: count() }).from(images),
-    db.select({ value: count() }).from(models),
-    db.select({ value: count() }).from(categories),
-    db.select({ value: sql<number>`coalesce(sum(${prompts.copyCount}), 0)` }).from(prompts),
-  ]);
+  const result = await db.execute<{
+    total_prompts: number;
+    published_prompts: number;
+    draft_prompts: number;
+    total_copies: string | number;
+    total_images: number;
+    total_models: number;
+    total_categories: number;
+  }>(sql`
+    select
+      (select count(*)::int from prompts) as total_prompts,
+      (select count(*)::int from prompts where status = 'published') as published_prompts,
+      (select count(*)::int from prompts where status = 'draft') as draft_prompts,
+      (select coalesce(sum(copy_count), 0) from prompts) as total_copies,
+      (select count(*)::int from images) as total_images,
+      (select count(*)::int from models) as total_models,
+      (select count(*)::int from categories) as total_categories
+  `);
+
+  const row = result.rows[0];
   return {
-    totalPrompts: total[0]?.value ?? 0,
-    publishedPrompts: published[0]?.value ?? 0,
-    draftPrompts: drafts[0]?.value ?? 0,
-    totalImages: imgs[0]?.value ?? 0,
-    totalModels: mods[0]?.value ?? 0,
-    totalCategories: cats[0]?.value ?? 0,
-    totalCopies: Number(copies[0]?.value ?? 0),
+    totalPrompts: row?.total_prompts ?? 0,
+    publishedPrompts: row?.published_prompts ?? 0,
+    draftPrompts: row?.draft_prompts ?? 0,
+    totalImages: row?.total_images ?? 0,
+    totalModels: row?.total_models ?? 0,
+    totalCategories: row?.total_categories ?? 0,
+    totalCopies: Number(row?.total_copies ?? 0),
   };
 }
 
