@@ -96,13 +96,14 @@ export async function signUploadParams(params: Record<string, string>): Promise<
     throw new Error("Cloudinary is not configured");
   }
   const timestamp = Math.floor(Date.now() / 1000);
-  const { createHmac } = await import("node:crypto");
+  const { createHash } = await import("node:crypto");
   const toSign: Record<string, string> = { ...params, timestamp: String(timestamp) };
   const sorted = Object.keys(toSign)
     .sort()
     .map((k) => `${k}=${toSign[k]}`)
     .join("&");
-  const signature = createHmac("sha1", apiSecret).update(sorted).digest("hex");
+  // Cloudinary: SHA1(sorted_params + api_secret) — not HMAC.
+  const signature = createHash("sha1").update(sorted + apiSecret).digest("hex");
   return { signature, timestamp, apiKey, cloudName };
 }
 

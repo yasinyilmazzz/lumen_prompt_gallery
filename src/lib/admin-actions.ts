@@ -438,8 +438,9 @@ async function destroyCloudinaryAsset(publicId: string | null): Promise<void> {
   const apiSecret = process.env.CLOUDINARY_API_SECRET;
   if (!cloudName || !apiKey || !apiSecret) return;
   const timestamp = Math.floor(Date.now() / 1000);
-  const { createHmac } = await import("node:crypto");
-  const signature = createHmac("sha1", apiSecret).update(`public_id=${publicId}&timestamp=${timestamp}`).digest("hex");
+  const { createHash } = await import("node:crypto");
+  const toSign = `public_id=${publicId}&timestamp=${timestamp}`;
+  const signature = createHash("sha1").update(toSign + apiSecret).digest("hex");
   const form = new FormData();
   form.set("public_id", publicId);
   form.set("timestamp", String(timestamp));
