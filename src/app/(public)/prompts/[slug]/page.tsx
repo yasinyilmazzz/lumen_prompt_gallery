@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import CopyButton from "@/components/CopyButton";
 import Gallery from "@/components/Gallery";
+import ShareButtons from "@/components/ShareButtons";
+import ZoomableImage from "@/components/ZoomableImage";
 import { SectionHeading, TagBadge } from "@/components/ui";
 import { CLOUDINARY_SIZES } from "@/lib/cloudinary";
 import { getPromptBySlug, getRelatedPrompts } from "@/lib/queries";
@@ -82,17 +83,15 @@ export default async function PromptPage({ params }: { params: Promise<{ slug: s
         {/* ------- images ------- */}
         <div className="min-w-0">
           {cover ? (
-            <figure className="overflow-hidden rounded-3xl bg-[#e9e9ee]">
-              <Image
-                src={cover.imageUrl}
-                alt={cover.altText || prompt.title}
-                width={cover.width || 960}
-                height={cover.height || 1200}
-                sizes={CLOUDINARY_SIZES.detail}
-                priority
-                className="h-auto w-full object-cover"
-              />
-            </figure>
+            <ZoomableImage
+              src={cover.imageUrl}
+              alt={cover.altText || prompt.title}
+              width={cover.width || 960}
+              height={cover.height || 1200}
+              sizes={CLOUDINARY_SIZES.detail}
+              priority
+              roundedClassName="rounded-3xl"
+            />
           ) : (
             <div className="grid h-96 place-items-center rounded-3xl bg-neutral-100 text-sm text-neutral-500">
               No images yet
@@ -101,17 +100,14 @@ export default async function PromptPage({ params }: { params: Promise<{ slug: s
           {rest.length > 0 && (
             <div className="mt-4 grid grid-cols-2 gap-4">
               {rest.map((img) => (
-                <figure key={img.id} className="overflow-hidden rounded-2xl bg-[#e9e9ee]">
-                  <Image
-                    src={img.imageUrl}
-                    alt={img.altText || prompt.title}
-                    width={img.width || 640}
-                    height={img.height || 800}
-                    sizes="(max-width: 1024px) 50vw, 30vw"
-                    loading="lazy"
-                    className="h-auto w-full object-cover"
-                  />
-                </figure>
+                <ZoomableImage
+                  key={img.id}
+                  src={img.imageUrl}
+                  alt={img.altText || prompt.title}
+                  width={img.width || 640}
+                  height={img.height || 800}
+                  sizes="(max-width: 1024px) 50vw, 30vw"
+                />
               ))}
             </div>
           )}
@@ -216,24 +212,11 @@ export default async function PromptPage({ params }: { params: Promise<{ slug: s
           )}
 
           {/* share */}
-          <div className="mt-6 flex items-center gap-2">
-            <a
-              href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(`${prompt.title} — AI prompt`)}&url=${encodeURIComponent(`${siteUrl()}/prompts/${prompt.slug}`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-full border border-black/12 bg-white px-4 py-2 text-[13px] font-medium transition hover:border-black"
-            >
-              Share on X
-            </a>
-            <a
-              href={`https://pinterest.com/pin/create/button/?description=${encodeURIComponent(prompt.title)}&url=${encodeURIComponent(`${siteUrl()}/prompts/${prompt.slug}`)}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-full border border-black/12 bg-white px-4 py-2 text-[13px] font-medium transition hover:border-black"
-            >
-              Pin it
-            </a>
-          </div>
+          <ShareButtons
+            title={prompt.title}
+            url={`${siteUrl()}/prompts/${prompt.slug}`}
+            imageUrl={cover?.imageUrl}
+          />
         </div>
       </div>
 
